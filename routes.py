@@ -1,7 +1,13 @@
 from fastapi import FastAPI, APIRouter, HTTPException
 from fastapi.encoders import jsonable_encoder
 
-from routes_function import *
+from routes_function import (
+    get_parser,
+    get_manhwa_description as get_description,
+    extract_chapter_number,
+    extract_chapter_access,
+    check_new_chapter
+)
 
 from pydantic import BaseModel, Field
 
@@ -21,23 +27,23 @@ async def change_manhwa_chapter(manhwa_name: str, Chapter_val: int):
 
 @endPoints.get("/run-parser")
 async def run_parser(manhwa_name: str):
-    soup = RunParser(manhwa_name)
+    soup = get_parser(manhwa_name)  
     return {"html": str(soup)}
 
 
 @endPoints.get("/manhwa/{manhwa_id}/latest-chapter")
 async def get_manhwa_latest_chapter(manhwa_name):
-    return {"latest-chapter": stripChapter(GetLatestChapter(GetParseChapterTag(RunParser(manhwa_name))))}
+    return {"latest-chapter": extract_chapter_number(manhwa_name)} 
     
 
 @endPoints.get("/manhwa/{manhwa_id}/chapter-access")
 async def get_chapter_access_status(manhwa_name):
-    return{"access": ChapterAccessText(GetParseChapterTag(RunParser(manhwa_name)))}
+    return{"access": extract_chapter_access(manhwa_name)} 
 
 
 @endPoints.get("/manhwa/{manhwa_id}/description") 
 async def get_manhwa_description(manhwa_name: str):
-    return {"description": getManhwaDescription(RunParser(manhwa_name))}
+    return {"description": get_description(manhwa_name)} 
 
 
 @endPoints.get("/manhwas")
@@ -50,10 +56,9 @@ async def create_manhwa(manhwa_name):
     if manhwa_name in Manhwa_DB:
         raise HTTPException(status_code=400, detail="Manhwa already exists")
     Manhwa_DB[manhwa_name] = ManhwaModel(
-        description= getManhwaDescription(RunParser(manhwa_name)),
-        chapters= stripChapter(GetLatestChapter(GetParseChapterTag(RunParser(manhwa_name)))),
-        access= ChapterAccessText(GetParseChapterTag(RunParser(manhwa_name))),
-        recentDate="MM/DD/YEAR"
+        description= str(get_description(manhwa_name)), 
+        chapters= extract_chapter_number(manhwa_name), 
+        access= extract_chapter_access(manhwa_name), 
     ).dict()
     return {"id": manhwa_name, "data": Manhwa_DB[manhwa_name]}
 
@@ -75,8 +80,8 @@ async def update_manhwa_chapter(manhwa_name: str):
     stored_chapter = Manhwa_DB[manhwa_name].get("chapters", 0)
 
     # get href from parser
-    latest_href = GetLatestChapter(GetParseChapterTag(RunParser(manhwa_name)))
-    updated_chapter, message = CheckForNewChapter(latest_href, stored_chapter)
+    
+    updated_chapter, message = check_new_chapter(manhwa_name, stored_chapter)
 
     # save updated int
     Manhwa_DB[manhwa_name]["chapters"] = updated_chapter
